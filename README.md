@@ -28,7 +28,8 @@ Este projeto busca prever a **nota média (`review_scores_rating`) de imóveis n
 airbnb-rating-ml/
 ├── data/         # Dados brutos e tratados
 ├── notebooks/    # Análises e experimentos
-├── src/          # Código-fonte principal
+├── backend/      # API e ML
+├── frontend/     # interface do usuário
 └── models/       # Modelos treinados
 ```
 
