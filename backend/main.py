@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from lime import lime_tabular
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, root_validator
 import joblib
 import pandas as pd
 import numpy as np
@@ -324,29 +324,29 @@ def build_lime_readable(exp, x_scaled_row, df_row_original, predicted_label, top
 # Modelo de entrada (request body)
 # ----------------------------------------------------------
 class AirbnbInput(BaseModel):
-    host_response_rate: float
-    host_acceptance_rate: float
-    host_listings_count: float
-    host_total_listings_count: float
+    host_response_rate: float = Field(..., ge=0, le=100)
+    host_acceptance_rate: float = Field(..., ge=0, le=100)
+    host_listings_count: float = Field(..., ge=0)
+    host_total_listings_count: float = Field(..., ge=0)
     host_has_profile_pic: bool
     host_identity_verified: bool
-    latitude: float
-    longitude: float
-    accommodates: int
-    bathrooms: float
-    bedrooms: float
-    beds: float
-    minimum_nights: int
-    maximum_nights: int
-    minimum_minimum_nights: float
-    maximum_minimum_nights: float
-    minimum_maximum_nights: float
-    maximum_maximum_nights: float
-    minimum_nights_avg_ntm: float
-    maximum_nights_avg_ntm: float
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    accommodates: int = Field(..., ge=1)
+    bathrooms: float = Field(..., ge=0)
+    bedrooms: float = Field(..., ge=0)
+    beds: float = Field(..., ge=0)
+    minimum_nights: int = Field(..., ge=1)
+    maximum_nights: int = Field(..., ge=1)
+    minimum_minimum_nights: float = Field(..., ge=0)
+    maximum_minimum_nights: float = Field(..., ge=0)
+    minimum_maximum_nights: float = Field(..., ge=0)
+    maximum_maximum_nights: float = Field(..., ge=0)
+    minimum_nights_avg_ntm: float = Field(..., ge=0)
+    maximum_nights_avg_ntm: float = Field(..., ge=0)
     has_availability: bool
-    host_days_active: int
-    amenities_count: int
+    host_days_active: int = Field(..., ge=0)
+    amenities_count: int = Field(..., ge=0)
     host_response_time: str
     room_type: str
     neighbourhood_cleansed: str
@@ -354,6 +354,27 @@ class AirbnbInput(BaseModel):
 
     class Config:
         anystr_strip_whitespace = True
+
+    @root_validator
+    def _check_ranges(cls, values):
+        pairs = [
+            ("minimum_nights", "maximum_nights"),
+            ("minimum_minimum_nights", "maximum_minimum_nights"),
+            ("minimum_maximum_nights", "maximum_maximum_nights"),
+            ("minimum_nights_avg_ntm", "maximum_nights_avg_ntm"),
+        ]
+        for lower, upper in pairs:
+            lower_val = values.get(lower)
+            upper_val = values.get(upper)
+            if lower_val is not None and upper_val is not None and lower_val > upper_val:
+                raise ValueError(f"'{lower}' nao pode ser maior que '{upper}'.")
+
+        total = values.get("host_total_listings_count")
+        count = values.get("host_listings_count")
+        if total is not None and count is not None and count > total:
+            raise ValueError("host_listings_count nao pode ser maior que host_total_listings_count.")
+
+        return values
 
 
 # ----------------------------------------------------------
