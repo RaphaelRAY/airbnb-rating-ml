@@ -40,3 +40,17 @@ airbnb-rating-ml/
 ---
 
 > _Modelos preditivos são úteis quando também são compreensíveis._
+## Execucao com Docker Compose
+
+1. Certifique-se de ter **Docker** e **Docker Compose** instalados.
+2. Na raiz do projeto, execute:
+
+   ```bash
+   docker compose up --build
+   ```
+
+3. Os servicos sobem com as seguintes portas expostas:
+   - Backend FastAPI em `http://localhost:8000`
+   - Frontend Next.js em `http://localhost:3000`
+
+O volume `./models` e montado no container para garantir o acesso aos artefatos do modelo. O frontend recebe automaticamente a variavel `NEXT_PUBLIC_API_URL` apontando para o backend, entao a aplicacao ja inicia integrada.
