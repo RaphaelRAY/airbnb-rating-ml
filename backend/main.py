@@ -124,6 +124,14 @@ def _load_lime_background() -> np.ndarray:
 # Precarrega amostras para reutilizar nas explicacoes LIME.
 LIME_BACKGROUND = _load_lime_background()
 
+# Mantem uma unica instancia do LIME para reduzir latencia e garantir consistencia.
+LIME_EXPLAINER = lime_tabular.LimeTabularExplainer(
+    training_data=LIME_BACKGROUND,
+    feature_names=list(EXPECTED_FEATURES),
+    class_names=le.classes_,
+    mode="classification",
+    random_state=42,
+)
 
 def _resolve_host_response_time(value: str) -> str:
     """Mapeia o texto do tempo de resposta para a coluna usada no treinamento."""
@@ -369,15 +377,8 @@ def predict(data: AirbnbInput):
         prob = model.predict_proba(X_scaled)[0]
 
         # ---------- LIME ----------
-        # Instancia o explicador com o background preparado para estabilizar os pesos.
-        explainer = lime_tabular.LimeTabularExplainer(
-            training_data=LIME_BACKGROUND,
-            feature_names=list(EXPECTED_FEATURES),
-            class_names=le.classes_,
-            mode="classification",
-        )
-        # Gera explicacao local considerando as probabilidades do modelo.
-        exp = explainer.explain_instance(
+        # Reutiliza o explicador global para reduzir custo por chamada.
+        exp = LIME_EXPLAINER.explain_instance(
             data_row=X_scaled[0],
             predict_fn=model.predict_proba,
             num_features=LIME_NUM_FEATURES,
