@@ -1,6 +1,9 @@
 # ==========================================================
 # main.py - API de Classificacao de Preco Airbnb
 # ==========================================================
+import json
+import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -31,11 +34,22 @@ app.add_middleware(
 # ----------------------------------------------------------
 # Carregar modelos e objetos
 # ----------------------------------------------------------
-model = joblib.load("models/modelo_airbnb.pkl")
-scaler = joblib.load("models/scaler_airbnb.pkl")
-le = joblib.load("models/label_encoder.pkl")
-le_neigh = joblib.load("models/label_encoder_neighbourhood.pkl")
-le_prop = joblib.load("models/label_encoder_property.pkl")
+# Permite configurar o diretorio de artefatos por variavel de ambiente.
+BACKEND_DIR = Path(__file__).resolve().parent
+DEFAULT_MODELS_DIR = BACKEND_DIR.parent / "models"
+MODELS_DIR = Path(os.getenv("AIRBNB_MODELS_DIR", DEFAULT_MODELS_DIR))
+
+MODEL_PATH = MODELS_DIR / "modelo_airbnb.pkl"
+SCALER_PATH = MODELS_DIR / "scaler_airbnb.pkl"
+LABEL_ENCODER_PATH = MODELS_DIR / "label_encoder.pkl"
+LABEL_ENCODER_NEIGH_PATH = MODELS_DIR / "label_encoder_neighbourhood.pkl"
+LABEL_ENCODER_PROP_PATH = MODELS_DIR / "label_encoder_property.pkl"
+
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+le = joblib.load(LABEL_ENCODER_PATH)
+le_neigh = joblib.load(LABEL_ENCODER_NEIGH_PATH)
+le_prop = joblib.load(LABEL_ENCODER_PROP_PATH)
 EXPECTED_FEATURES = tuple(scaler.feature_names_in_)
 
 # ----------------------------------------------------------
@@ -62,8 +76,25 @@ ROOM_TYPE_COLUMNS = {
 BOOL_FIELDS = ("host_has_profile_pic", "host_identity_verified", "has_availability")
 
 _NORMALIZE_TRANS = str.maketrans({"/": " ", "_": " ", "-": " "})
-LIME_BACKGROUND_PATH = Path("models/lime_background.npy")
+LIME_BACKGROUND_PATH = MODELS_DIR / "lime_background.npy"
 LIME_NUM_FEATURES = 20
+
+logger = logging.getLogger("airbnb_api")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+
+def _log_event(event: str, **payload) -> None:
+    """Registra eventos estruturados em formato JSON."""
+    try:
+        message = json.dumps({"event": event, **payload}, ensure_ascii=False, default=str)
+    except TypeError:
+        message = f"{event} | {payload}"
+    logger.info(message)
 
 
 def _normalize_text(value: str) -> str:
@@ -184,6 +215,13 @@ def _prepare_features(payload: "AirbnbInput") -> pd.DataFrame:
     """Transforma a carga util crua no vetor de atributos esperado pelo modelo."""
     # Garante que trabalharemos com um dicionario editavel.
     raw = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    original_payload = raw.copy()
+    _log_event(
+        "prepare_features_start",
+        host_response_time=original_payload.get("host_response_time"),
+        room_type=original_payload.get("room_type"),
+        bool_fields={field: original_payload.get(field) for field in BOOL_FIELDS},
+    )
 
     # Separa categorias que precisam de tratamento especial antes do dataframe.
     host_response_time = raw.pop("host_response_time")
@@ -216,7 +254,18 @@ def _prepare_features(payload: "AirbnbInput") -> pd.DataFrame:
 
     df = pd.DataFrame([raw])
     # Reordena e garante que colunas ausentes sejam preenchidas com zero.
-    return df.reindex(columns=EXPECTED_FEATURES, fill_value=0)
+    df = df.reindex(columns=EXPECTED_FEATURES, fill_value=0)
+
+    transformed_row = df.iloc[0].to_dict()
+    non_zero_features = {
+        name: value for name, value in transformed_row.items() if value not in (0, 0.0)
+    }
+    _log_event(
+        "prepare_features_end",
+        total_features=len(transformed_row),
+        non_zero_features=non_zero_features,
+    )
+    return df
 
 # Etiquetas legiveis e agrupamentos para apresentar o resultado do LIME.
 NICE_FEATURES = {
@@ -386,6 +435,8 @@ def predict(data: AirbnbInput):
     Faz a previsao da classe de preco (baixo, medio, luxo)
     e retorna tambem a explicacao LIME das principais variaveis.
     """
+    payload = data.model_dump()
+    _log_event("predict_request_received", payload=payload)
     try:
         df = _prepare_features(data)
 
@@ -396,6 +447,7 @@ def predict(data: AirbnbInput):
         pred_num = model.predict(X_scaled)[0]
         classe_prevista = le.inverse_transform([pred_num])[0]
         prob = model.predict_proba(X_scaled)[0]
+        probabilities_map = {c: float(p) for c, p in zip(le.classes_, prob)}
 
         # ---------- LIME ----------
         # Reutiliza o explicador global para reduzir custo por chamada.
@@ -413,11 +465,19 @@ def predict(data: AirbnbInput):
             min_abs=0.02,
         )
 
+        _log_event(
+            "predict_response_ready",
+            predicted_class=classe_prevista,
+            confidence=probabilities_map.get(classe_prevista),
+            probabilities=probabilities_map,
+            lime_coverage=explicacao_legivel.get("cobertura_pct"),
+        )
+
         resultado = {
             "classe_prevista": classe_prevista,
             "confianca": f"{prob[pred_num]*100:.1f}%",
             "probabilidades": {
-                c: f"{p*100:.1f}%" for c, p in zip(le.classes_, prob)
+                c: f"{p*100:.1f}%" for c, p in probabilities_map.items()
             },
             "explicacao_LIME": explicacao_legivel,
         }
@@ -425,8 +485,11 @@ def predict(data: AirbnbInput):
         return {"status": "ok", "resultado": resultado}
 
     except HTTPException as exc:
+        _log_event("predict_http_error", detail=exc.detail, payload=payload)
         raise exc
     except Exception as e:
+        _log_event("predict_unexpected_error", error=str(e), payload=payload)
+        logger.exception("predict_unexpected_error")
         return {
             "status": "erro",
             "mensagem": str(e),
