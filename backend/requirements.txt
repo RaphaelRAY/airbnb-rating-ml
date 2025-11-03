@@ -3,7 +3,8 @@ uvicorn[standard]==0.38.0
 pydantic==2.12.3
 numpy==1.26.4
 pandas==2.2.2
-scikit-learn==1.4.2
+scikit-learn
 joblib==1.4.2
 lime==0.2.0.1
 python-dotenv==1.0.1
+xgboost==1.7.6

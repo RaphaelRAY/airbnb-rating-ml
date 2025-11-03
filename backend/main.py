@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from lime import lime_tabular
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 import joblib
 import pandas as pd
 import numpy as np
@@ -401,29 +401,28 @@ class AirbnbInput(BaseModel):
     neighbourhood_cleansed: str
     property_type: str
 
-    class Config:
-        anystr_strip_whitespace = True
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    @root_validator
-    def _check_ranges(cls, values):
-        pairs = [
+    @model_validator(mode="after")
+    def _check_ranges(self):
+        pairs = (
             ("minimum_nights", "maximum_nights"),
             ("minimum_minimum_nights", "maximum_minimum_nights"),
             ("minimum_maximum_nights", "maximum_maximum_nights"),
             ("minimum_nights_avg_ntm", "maximum_nights_avg_ntm"),
-        ]
+        )
         for lower, upper in pairs:
-            lower_val = values.get(lower)
-            upper_val = values.get(upper)
+            lower_val = getattr(self, lower)
+            upper_val = getattr(self, upper)
             if lower_val is not None and upper_val is not None and lower_val > upper_val:
                 raise ValueError(f"'{lower}' nao pode ser maior que '{upper}'.")
 
-        total = values.get("host_total_listings_count")
-        count = values.get("host_listings_count")
+        total = self.host_total_listings_count
+        count = self.host_listings_count
         if total is not None and count is not None and count > total:
             raise ValueError("host_listings_count nao pode ser maior que host_total_listings_count.")
 
-        return values
+        return self
 
 
 # ----------------------------------------------------------
