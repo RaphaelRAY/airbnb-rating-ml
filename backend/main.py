@@ -41,6 +41,7 @@ EXPECTED_FEATURES = tuple(scaler.feature_names_in_)
 # ----------------------------------------------------------
 # Constantes e funcoes de apoio
 # ----------------------------------------------------------
+# Mapeia respostas textuais do host para as colunas one-hot usadas pelo modelo.
 HOST_RESPONSE_TIME_COLUMNS = {
     "a few days or more": "host_response_time_a few days or more",
     "unknown": "host_response_time_unknown",
@@ -49,6 +50,7 @@ HOST_RESPONSE_TIME_COLUMNS = {
     "within an hour": "host_response_time_within an hour",
 }
 
+# Mapeia tipos de quarto para as colunas derivadas durante o treinamento.
 ROOM_TYPE_COLUMNS = {
     "entire home apt": "room_type_Entire home/apt",
     "hotel room": "room_type_Hotel room",
@@ -56,6 +58,7 @@ ROOM_TYPE_COLUMNS = {
     "shared room": "room_type_Shared room",
 }
 
+# Campos booleanos que precisam ser convertidos para 0/1 antes de alimentar o modelo.
 BOOL_FIELDS = ("host_has_profile_pic", "host_identity_verified", "has_availability")
 
 _NORMALIZE_TRANS = str.maketrans({"/": " ", "_": " ", "-": " "})
@@ -68,6 +71,7 @@ def _normalize_text(value: str) -> str:
     return " ".join(value.lower().translate(_NORMALIZE_TRANS).split())
 
 
+# Constroi lookup com textos normalizados para aceitar variantes de entrada.
 HOST_RESPONSE_TIME_LOOKUP = {}
 for key, column in HOST_RESPONSE_TIME_COLUMNS.items():
     normalized = _normalize_text(key)
@@ -75,6 +79,7 @@ for key, column in HOST_RESPONSE_TIME_COLUMNS.items():
     HOST_RESPONSE_TIME_LOOKUP[_normalize_text(f"host response time {key}")] = column
 
 
+# Idem para os tipos de quarto.
 ROOM_TYPE_LOOKUP = {}
 for key, column in ROOM_TYPE_COLUMNS.items():
     normalized = _normalize_text(key)
@@ -86,6 +91,7 @@ def _load_lime_background() -> np.ndarray:
     """Carrega amostras de background para o LIME ou cria fallback a partir do scaler."""
     if LIME_BACKGROUND_PATH.exists():
         try:
+            # Usa amostras salvas para manter consistencia entre chamadas.
             background = np.load(LIME_BACKGROUND_PATH)
             if background.ndim == 2 and background.shape[1] == len(EXPECTED_FEATURES):
                 return background
@@ -94,6 +100,7 @@ def _load_lime_background() -> np.ndarray:
 
     # Tenta gerar amostras sinteticas usando estatisticas do scaler (quando disponiveis)
     try:
+        # Caso nao haja arquivo, tenta sintetizar a partir das estatisticas do scaler.
         mean = getattr(scaler, "mean_", None)
         scale = getattr(scaler, "scale_", None)
         if mean is not None:
@@ -114,6 +121,7 @@ def _load_lime_background() -> np.ndarray:
     return np.zeros((fallback_rows, len(EXPECTED_FEATURES)))
 
 
+# Precarrega amostras para reutilizar nas explicacoes LIME.
 LIME_BACKGROUND = _load_lime_background()
 
 
@@ -122,6 +130,7 @@ def _resolve_host_response_time(value: str) -> str:
     normalized = _normalize_text(value)
     column = HOST_RESPONSE_TIME_LOOKUP.get(normalized)
     if not column and normalized.startswith("host response time "):
+        # Permite entradas com o prefixo completo enviado por alguns clientes.
         column = HOST_RESPONSE_TIME_LOOKUP.get(normalized.replace("host response time ", "", 1))
     if not column:
         raise HTTPException(
@@ -153,6 +162,7 @@ def _encode_category(encoder, value: str, field_name: str) -> int:
 
     lower_cleaned = cleaned.lower()
     for original in encoder.classes_:
+        # Normaliza caixa para evitar rejeitar textos com capitalizacao diferente.
         if original.lower() == lower_cleaned:
             return int(encoder.transform([original])[0])
 
@@ -164,19 +174,23 @@ def _encode_category(encoder, value: str, field_name: str) -> int:
 
 def _prepare_features(payload: "AirbnbInput") -> pd.DataFrame:
     """Transforma a carga util crua no vetor de atributos esperado pelo modelo."""
+    # Garante que trabalharemos com um dicionario editavel.
     raw = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
 
+    # Separa categorias que precisam de tratamento especial antes do dataframe.
     host_response_time = raw.pop("host_response_time")
     room_type = raw.pop("room_type")
     neighbourhood = raw.pop("neighbourhood_cleansed")
     property_type = raw.pop("property_type")
 
+    # Converte booleanos para 0/1 porque o modelo foi treinado com floats.
     for field in BOOL_FIELDS:
         raw[field] = float(raw[field])
 
-    # Feature derivada usada no modelo
+    # Reproduz feature derivada usada durante o treinamento.
     raw["bath_per_bedroom"] = raw["bathrooms"] / (raw["bedrooms"] + 1)
 
+    # Aplica label encoding igual ao pipeline de treinamento.
     raw["neighbourhood_cleansed_encoded"] = _encode_category(
         le_neigh, neighbourhood, "neighbourhood_cleansed"
     )
@@ -184,16 +198,19 @@ def _prepare_features(payload: "AirbnbInput") -> pd.DataFrame:
         le_prop, property_type, "property_type"
     )
 
+    # Inicializa as variaveis dummies de tempo de resposta e ativa a recebida.
     raw.update({col: 0.0 for col in HOST_RESPONSE_TIME_COLUMNS.values()})
     raw[_resolve_host_response_time(host_response_time)] = 1.0
 
+    # Idem para o tipo de quarto.
     raw.update({col: 0.0 for col in ROOM_TYPE_COLUMNS.values()})
     raw[_resolve_room_type(room_type)] = 1.0
 
     df = pd.DataFrame([raw])
+    # Reordena e garante que colunas ausentes sejam preenchidas com zero.
     return df.reindex(columns=EXPECTED_FEATURES, fill_value=0)
 
-
+# Etiquetas legiveis e agrupamentos para apresentar o resultado do LIME.
 NICE_FEATURES = {
     "latitude": ("Latitude", "Localizacao"),
     "longitude": ("Longitude", "Localizacao"),
@@ -216,9 +233,10 @@ NICE_FEATURES = {
     "host_response_time_a few days or more": ("Tempo de resp. = varios dias", "Host"),
     "host_response_time_unknown": ("Tempo de resp. = desconhecido", "Host"),
 }
-
+ 
 
 def _inverse_scale_row(scaler_obj, x_scaled_row, feature_names):
+    """Reverte uma linha escalonada para valores originais aproximados."""
     mean = getattr(scaler_obj, "mean_", None)
     var = getattr(scaler_obj, "var_", None)
     if mean is None or var is None:
@@ -229,6 +247,7 @@ def _inverse_scale_row(scaler_obj, x_scaled_row, feature_names):
 
 
 def build_lime_readable(exp, x_scaled_row, df_row_original, predicted_label, topk=8, min_abs=0.02):
+    """Organiza a saida do LIME em um formato amigavel para retorno JSON."""
     available = exp.available_labels()
     if isinstance(predicted_label, str):
         try:
@@ -238,12 +257,15 @@ def build_lime_readable(exp, x_scaled_row, df_row_original, predicted_label, top
     else:
         label_idx = available[0]
 
+    # Seleciona o conjunto de pesos referente ao rotulo previsto.
     pairs = exp.as_map().get(label_idx, [])
     if not pairs and available:
         pairs = exp.as_map().get(available[0], [])
 
+    # Recupera valores na escala original para mostrar ao usuario.
     original_vals = _inverse_scale_row(scaler, x_scaled_row, df_row_original.columns)
 
+    # Ordena as contribuicoes por importancia absoluta.
     pairs = sorted(pairs, key=lambda item: abs(item[1]), reverse=True)
     total = sum(abs(weight) for _, weight in pairs) or 1.0
     covered = 0.0
@@ -264,6 +286,7 @@ def build_lime_readable(exp, x_scaled_row, df_row_original, predicted_label, top
         else:
             valor = raw_val
 
+        # Direcao indica se a feature empurra a probabilidade para a classe prevista.
         direcao = f"\u2191 p/ {predicted_label}" if weight > 0 else f"\u2193 p/ {predicted_label}"
 
         itens.append(
@@ -346,12 +369,14 @@ def predict(data: AirbnbInput):
         prob = model.predict_proba(X_scaled)[0]
 
         # ---------- LIME ----------
+        # Instancia o explicador com o background preparado para estabilizar os pesos.
         explainer = lime_tabular.LimeTabularExplainer(
             training_data=LIME_BACKGROUND,
             feature_names=list(EXPECTED_FEATURES),
             class_names=le.classes_,
             mode="classification",
         )
+        # Gera explicacao local considerando as probabilidades do modelo.
         exp = explainer.explain_instance(
             data_row=X_scaled[0],
             predict_fn=model.predict_proba,
