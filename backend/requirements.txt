@@ -8,3 +8,5 @@ joblib==1.4.2
 lime==0.2.0.1
 python-dotenv==1.0.1
 xgboost==1.7.6
+shap
+

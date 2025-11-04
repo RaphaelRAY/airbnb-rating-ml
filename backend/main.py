@@ -5,6 +5,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import shap
+
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -163,6 +165,16 @@ LIME_EXPLAINER = lime_tabular.LimeTabularExplainer(
     mode="classification",
     random_state=42,
 )
+
+# ----------------------------------------------------------
+# SHAP - explicabilidade
+# ----------------------------------------------------------
+try:
+    SHAP_EXPLAINER = shap.TreeExplainer(model)
+    SHAP_BACKGROUND = None
+except Exception:
+    SHAP_BACKGROUND = LIME_BACKGROUND
+    SHAP_EXPLAINER = shap.KernelExplainer(model.predict_proba, SHAP_BACKGROUND)
 
 def _resolve_host_response_time(value: str) -> str:
     """Mapeia o texto do tempo de resposta para a coluna usada no treinamento."""
@@ -369,6 +381,92 @@ def build_lime_readable(exp, x_scaled_row, df_row_original, predicted_label, top
     }
 
 
+def _select_shap_row(shap_values, predicted_index: int):
+    """Extrai o vetor SHAP referente a classe prevista, independente do formato retornado."""
+    explanation_cls = getattr(shap, "Explanation", None)
+    if explanation_cls is not None and isinstance(shap_values, explanation_cls):
+        values = shap_values.values
+        if values.ndim == 3:
+            return values[0, predicted_index, :]
+        if values.ndim == 2:
+            return values[0]
+        return values[predicted_index]
+
+    if isinstance(shap_values, list):
+        selected = shap_values[predicted_index]
+        selected = np.asarray(selected)
+        if selected.ndim == 2:
+            return selected[0]
+        return selected
+
+    values = np.asarray(shap_values)
+    if values.ndim == 3:
+        return values[0, predicted_index, :]
+    return values[0]
+
+
+def build_shap_readable(
+    shap_values_row,
+    x_scaled_row,
+    df_row_original,
+    predicted_label,
+    topk: int = 10,
+    min_abs: float = 0.0,
+):
+    """
+    Organiza a saida do SHAP em um formato amigavel para retorno JSON.
+    `shap_values_row` deve ser um array 1D com o valor SHAP de cada feature.
+    """
+    shap_array = np.asarray(shap_values_row).ravel()
+    original_vals = _inverse_scale_row(scaler, x_scaled_row, df_row_original.columns)
+
+    pairs = list(enumerate(shap_array))
+    pairs = sorted(pairs, key=lambda item: abs(item[1]), reverse=True)
+
+    itens = []
+    total = sum(abs(val) for _, val in pairs) or 1.0
+    covered = 0.0
+
+    for idx, impacto in pairs:
+        if abs(impacto) < min_abs:
+            continue
+
+        name = df_row_original.columns[idx]
+        label, group = NICE_FEATURES.get(name, (name, "Outros"))
+
+        raw_val = df_row_original.iloc[0].get(name, original_vals.get(name))
+        if name.startswith("room_type_") or name.startswith("host_response_time_"):
+            valor = "sim" if (raw_val is not None and raw_val >= 0.5) else "nao"
+        elif isinstance(raw_val, (int, float, np.floating, np.integer)):
+            valor = round(float(raw_val), 2)
+        else:
+            valor = raw_val
+
+        direcao = f"\u2191 p/ {predicted_label}" if impacto > 0 else f"\u2193 p/ {predicted_label}"
+
+        itens.append(
+            {
+                "feature": name,
+                "rotulo": label,
+                "grupo": group,
+                "valor": valor,
+                "impacto": round(float(impacto), 3),
+                "direcao": direcao,
+            }
+        )
+
+        covered += abs(impacto)
+        if len(itens) >= topk:
+            break
+
+    cobertura = round(100.0 * covered / total, 1)
+
+    return {
+        "itens": itens,
+        "cobertura_pct": cobertura,
+    }
+
+
 # ----------------------------------------------------------
 # Modelo de entrada (request body)
 # ----------------------------------------------------------
@@ -432,7 +530,7 @@ class AirbnbInput(BaseModel):
 def predict(data: AirbnbInput):
     """
     Faz a previsao da classe de preco (baixo, medio, luxo)
-    e retorna tambem a explicacao LIME das principais variaveis.
+    e retorna tambem as explicacoes LIME e SHAP das principais variaveis.
     """
     payload = data.model_dump()
     _log_event("predict_request_received", payload=payload)
@@ -464,12 +562,35 @@ def predict(data: AirbnbInput):
             min_abs=0.02,
         )
 
+        # ---------- SHAP ----------
+        try:
+            if SHAP_BACKGROUND is None:
+                shap_values_raw = SHAP_EXPLAINER.shap_values(X_scaled)
+            else:
+                shap_values_raw = SHAP_EXPLAINER.shap_values(X_scaled, nsamples="auto")
+
+            shap_row = _select_shap_row(shap_values_raw, int(pred_num))
+            explicacao_shap = build_shap_readable(
+                shap_row,
+                X_scaled[0],
+                df,
+                classe_prevista,
+                topk=10,
+                min_abs=0.0,
+            )
+        except Exception as shap_exc:
+            explicacao_shap = {"erro": str(shap_exc)}
+            _log_event("predict_shap_error", error=str(shap_exc))
+
         _log_event(
             "predict_response_ready",
             predicted_class=classe_prevista,
             confidence=probabilities_map.get(classe_prevista),
             probabilities=probabilities_map,
             lime_coverage=explicacao_legivel.get("cobertura_pct"),
+            shap_coverage=explicacao_shap.get("cobertura_pct")
+            if isinstance(explicacao_shap, dict)
+            else None,
         )
 
         resultado = {
@@ -479,6 +600,7 @@ def predict(data: AirbnbInput):
                 c: f"{p*100:.1f}%" for c, p in probabilities_map.items()
             },
             "explicacao_LIME": explicacao_legivel,
+            "explicacao_SHAP": explicacao_shap,
         }
 
         return {"status": "ok", "resultado": resultado}
