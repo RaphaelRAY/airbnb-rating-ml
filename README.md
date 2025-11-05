@@ -1,7 +1,3 @@
-Aqui está o **README** atualizado com a estrutura simplificada e instruções de execução com *Docker Compose*, integradas ao conteúdo anterior:
-
----
-
 # Classificação de Preços de Anúncios Airbnb no Rio de Janeiro
 
 Este projeto constrói um sistema de **classificação de faixas de preço** para anúncios do Airbnb na cidade do Rio de Janeiro. A aplicação final recebe informações resumidas de um imóvel (número de quartos, tipo de quarto, localização, etc.) e retorna se o anúncio pertence à faixa **baixa**, **média** ou **luxo**. O trabalho foi desenvolvido em várias etapas — exploração dos dados, limpeza e pré-processamento, modelagem e avaliação — e culminou em uma API pronta para ser consumida por aplicações web ou serviços internos.
@@ -82,8 +78,11 @@ O volume `./models` é montado no container para garantir acesso aos artefatos d
 
 ---
 
-## Autor
+## Autores
 
-### **Raphael Raymundo**
-
-> *Modelos preditivos são úteis quando também são compreensíveis.*
+### **Raphael Raymundo** 21.00334-3
+### **Nicole Martins Fragnan** 21.00368-8
+### **Kaiven Yang Su** 20.02146-0
+### **Felipe Rodrigues Peixoto da Silva ** 21.00127-8
+### **Eduardo Lucas Felippa** 20.01913-0
+### **Flávio Murata** 21.01192-3
