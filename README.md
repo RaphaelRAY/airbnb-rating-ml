@@ -2,6 +2,12 @@
 
 Este projeto constrói um sistema de **classificação de faixas de preço** para anúncios do Airbnb na cidade do Rio de Janeiro. A aplicação final recebe informações resumidas de um imóvel (número de quartos, tipo de quarto, localização, etc.) e retorna se o anúncio pertence à faixa **baixa**, **média** ou **luxo**. O trabalho foi desenvolvido em várias etapas — exploração dos dados, limpeza e pré-processamento, modelagem e avaliação — e culminou em uma API pronta para ser consumida por aplicações web ou serviços internos.
 
+## Demonstração em Vídeo
+
+A apresentação do projeto pode ser assistida no link abaixo:
+
+[https://www.youtube.com/watch?v=lS2-iXDZ2Rc](https://www.youtube.com/watch?v=lS2-iXDZ2Rc)
+
 ## Visão geral do conjunto de dados
 
 Os dados provêm de um repositório público de listagens Airbnb. O conjunto principal (`listings.csv`) possui **79 colunas** e **42 572 registros**, com características que variam de descrições textuais até valores numéricos como preço, número de banheiros e latitude/longitude. Durante a exploração verificou-se que a base é bastante desequilibrada geograficamente: bairros turísticos concentram a maior parte dos anúncios (por exemplo, Copacabana possui mais de **13 000 anúncios**, seguida de Barra da Tijuca com ~**3 680** e Ipanema com ~**3 615**).
