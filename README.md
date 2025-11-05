@@ -1,24 +1,54 @@
-# Airbnb Rating ML
-
-## Visão Geral
-
-Este projeto busca prever a **nota média (`review_scores_rating`) de imóveis novos no Airbnb** utilizando técnicas de aprendizado de máquina. A ideia é ajudar a estimar a reputação esperada de um imóvel com base em características como localização, tipo, preço e informações do anfitrião.
+Aqui está o **README** atualizado com a estrutura simplificada e instruções de execução com *Docker Compose*, integradas ao conteúdo anterior:
 
 ---
 
-## Objetivo
+# Classificação de Preços de Anúncios Airbnb no Rio de Janeiro
 
-- Prever a nota esperada de novos anúncios sem avaliações.
-- Fornecer uma base para análise de fatores que influenciam a reputação.
+Este projeto constrói um sistema de **classificação de faixas de preço** para anúncios do Airbnb na cidade do Rio de Janeiro. A aplicação final recebe informações resumidas de um imóvel (número de quartos, tipo de quarto, localização, etc.) e retorna se o anúncio pertence à faixa **baixa**, **média** ou **luxo**. O trabalho foi desenvolvido em várias etapas — exploração dos dados, limpeza e pré-processamento, modelagem e avaliação — e culminou em uma API pronta para ser consumida por aplicações web ou serviços internos.
 
----
+## Visão geral do conjunto de dados
 
-## Tecnologias
+Os dados provêm de um repositório público de listagens Airbnb. O conjunto principal (`listings.csv`) possui **79 colunas** e **42 572 registros**, com características que variam de descrições textuais até valores numéricos como preço, número de banheiros e latitude/longitude. Durante a exploração verificou-se que a base é bastante desequilibrada geograficamente: bairros turísticos concentram a maior parte dos anúncios (por exemplo, Copacabana possui mais de **13 000 anúncios**, seguida de Barra da Tijuca com ~**3 680** e Ipanema com ~**3 615**).
+A maioria dos imóveis é do tipo “**Entire home/apt**” (cerca de **34 000 listagens**), enquanto quartos privados são pouco mais de 8 000 e quartos de hotel são raríssimos.
 
-- **Python**
-- **XGBoost**
-- **Scikit-learn**
-- **SHAP / LIME** (para interpretação do modelo)
+O arquivo `calendar.csv` traz informações de disponibilidade por data e confirmou que a maioria dos imóveis fica livre durante grande parte do ano, com variação sazonal nas datas de alta temporada. Já `neighbourhoods.csv` e `neighbourhoods.geojson` fornecem a estrutura administrativa dos bairros, permitindo análises espaciais e mapeamento em geovisualizações.
+
+## Análise exploratória
+
+Na etapa exploratória foram geradas estatísticas descritivas, perfis de anfitriões e imóveis e gráficos da distribuição de preços. Observou-se que:
+
+* **Distribuição de preços:** assimetria positiva, com muitos anúncios baratos e poucos extremamente caros. Foi usada transformação logarítmica.
+* **Valores ausentes:** removidos ou imputados.
+* **Correlação entre atributos:** número de quartos, tipo de quarto e localização têm forte influência no preço.
+
+## Limpeza e pré-processamento
+
+* Remoção de colunas irrelevantes ou altamente correlacionadas
+* Conversão de colunas categóricas em variáveis dummy
+* Normalização e padronização de atributos numéricos
+* Imputação de valores ausentes
+* Detecção e remoção de outliers
+
+Após o pré-processamento, o conjunto foi dividido em treino e teste (80/20). Também foi criada a variável-alvo categórica (`faixa_preco`) com três classes: **baixo**, **médio** e **luxo**.
+
+## Modelagem e resultados
+
+Três algoritmos foram avaliados:
+
+| Modelo              | Acurácia   | Observação              |
+| ------------------- | ---------- | ----------------------- |
+| Regressão Logística | 0.5901     | Base de comparação      |
+| Random Forest       | 0.6689     | Bom equilíbrio geral    |
+| **XGBoost**         | **0.6917** | Melhor desempenho geral |
+
+Além da acurácia, foram analisadas métricas como **Precisão**, **Recall** e **F1-score**, com bom desempenho nas três classes.
+
+## Explicabilidade e API
+
+* **LIME (Local Interpretable Model-agnostic Explanations):** explicações locais para previsões individuais.
+* **SHAP (SHapley Additive Explanations):** identifica as variáveis que mais influenciam o modelo globalmente.
+
+A API, construída com **FastAPI**, carrega o modelo e os objetos de pré-processamento e expõe endpoints REST para previsões e explicações. Inclui CORS, logging estruturado e tratamento de erros.
 
 ---
 
@@ -33,24 +63,27 @@ airbnb-rating-ml/
 └── models/       # Modelos treinados
 ```
 
-## Autor
-
-## **Raphael Raymundo**
-
----
-
-> _Modelos preditivos são úteis quando também são compreensíveis._
-## Execucao com Docker Compose
+## Execução com Docker Compose
 
 1. Certifique-se de ter **Docker** e **Docker Compose** instalados.
+
 2. Na raiz do projeto, execute:
 
    ```bash
    docker compose up --build
    ```
 
-3. Os servicos sobem com as seguintes portas expostas:
-   - Backend FastAPI em `http://localhost:8000`
-   - Frontend Next.js em `http://localhost:3000`
+3. Os serviços sobem com as seguintes portas expostas:
 
-O volume `./models` e montado no container para garantir o acesso aos artefatos do modelo. O frontend recebe automaticamente a variavel `NEXT_PUBLIC_API_URL` apontando para o backend, entao a aplicacao ja inicia integrada.
+   * Backend FastAPI → `http://localhost:8000`
+   * Frontend Next.js → `http://localhost:3000`
+
+O volume `./models` é montado no container para garantir acesso aos artefatos do modelo. O frontend recebe automaticamente `NEXT_PUBLIC_API_URL` apontando para o backend, iniciando o sistema integrado.
+
+---
+
+## Autor
+
+### **Raphael Raymundo**
+
+> *Modelos preditivos são úteis quando também são compreensíveis.*
