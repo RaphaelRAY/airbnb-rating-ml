@@ -80,6 +80,7 @@ BOOL_FIELDS = ("host_has_profile_pic", "host_identity_verified", "has_availabili
 _NORMALIZE_TRANS = str.maketrans({"/": " ", "_": " ", "-": " "})
 LIME_BACKGROUND_PATH = MODELS_DIR / "lime_background.npy"
 LIME_NUM_FEATURES = 20
+SHAP_TOP_FEATURES = 15
 
 logger = logging.getLogger("airbnb_api")
 if not logger.handlers:
@@ -410,7 +411,7 @@ def build_shap_readable(
     x_scaled_row,
     df_row_original,
     predicted_label,
-    topk: int = 10,
+    topk: int = SHAP_TOP_FEATURES,
     min_abs: float = 0.0,
 ):
     """
@@ -575,7 +576,7 @@ def predict(data: AirbnbInput):
                 X_scaled[0],
                 df,
                 classe_prevista,
-                topk=10,
+                topk=SHAP_TOP_FEATURES,
                 min_abs=0.0,
             )
         except Exception as shap_exc:
