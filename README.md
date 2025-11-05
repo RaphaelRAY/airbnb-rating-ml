@@ -43,9 +43,17 @@ Além da acurácia, foram analisadas métricas como **Precisão**, **Recall** e 
 
 * **LIME (Local Interpretable Model-agnostic Explanations):** explicações locais para previsões individuais.
 * **SHAP (SHapley Additive Explanations):** identifica as variáveis que mais influenciam o modelo globalmente.
+  * SHAP não funcional devido a problema de compatibilidade com o modelo XGBoost
 
 A API, construída com **FastAPI**, carrega o modelo e os objetos de pré-processamento e expõe endpoints REST para previsões e explicações. Inclui CORS, logging estruturado e tratamento de erros.
 
+
+## Conclusão
+
+ O projeto demonstrou que, com pré‑processamento adequado e modelos de classificação robustos, é possível prever a faixa de preço de anúncios do Airbnb no Rio de Janeiro com acurácia superior a 69 %.O modelo XGBoost se destacou por capturar relações não lineares e minimizar a influência de outliers. A integração de ferramentas de interpretabilidade (LIME e SHAP) tornou o modelo transparente, permitindo identificar os fatores que mais influenciam o preço e fornecer confiança aos usuários e aos anfitriões.
+
+ Como trabalhos futuros, sugerem‑se a inclusão de variáveis externas (como eventos sazonais e clima) e a experimentação com métodos de redes neurais. A API desenvolvida pode ser integrada a painéis web ou aplicativos móveis para ajudar anfitriões a precificar seus imóveis de forma competitiva e justa
+ 
 ---
 
 ## Estrutura Simplificada
@@ -86,3 +94,12 @@ O volume `./models` é montado no container para garantir acesso aos artefatos d
 *  **Felipe Rodrigues Peixoto da Silva** 21.00127-8
 *  **Eduardo Lucas Felippa** 20.01913-0
 *  **Flávio Murata** 21.01192-3
+
+## Referências
+
+* Rogerio‑mack. IMT_CD_2025 – repositório GitHub de referência. Disponível em: https://github.com/Rogerio-mack/IMT_CD_2025
+. Acesso em nov. 2025.
+* LIME: Ribeiro, M. T., Singh, S., & Guestrin, C. (2016). “Why should I trust you?” Explaining the predictions of any classifier. Proceedings of the 22nd ACM SIGKDD.
+* SHAP: Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting model predictions. Advances in Neural Information Processing Systems.
+* Airbnb data: dados públicos do portal Inside Airbnb. Disponíveis em insideairbnb.com (acesso em nov. 2025).
+
