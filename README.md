@@ -80,9 +80,9 @@ O volume `./models` é montado no container para garantir acesso aos artefatos d
 
 ## Autores
 
-### **Raphael Raymundo** 21.00334-3
-### **Nicole Martins Fragnan** 21.00368-8
-### **Kaiven Yang Su** 20.02146-0
-### **Felipe Rodrigues Peixoto da Silva ** 21.00127-8
-### **Eduardo Lucas Felippa** 20.01913-0
-### **Flávio Murata** 21.01192-3
+*  **Raphael Raymundo** 21.00334-3
+*  **Nicole Martins Fragnan** 21.00368-8
+*  **Kaiven Yang Su** 20.02146-0
+*  **Felipe Rodrigues Peixoto da Silva** 21.00127-8
+*  **Eduardo Lucas Felippa** 20.01913-0
+*  **Flávio Murata** 21.01192-3
